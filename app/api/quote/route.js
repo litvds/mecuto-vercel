@@ -1,3 +1,19 @@
 import { NextResponse } from "next/server";
 import { calcTotals } from "../../../lib/rawBusiness";
-export async function POST(req){try{const body=await req.json();return NextResponse.json({ok:true,...await calcTotals(body.model,body.selectedOptions||[],Number(body.distanceKm||0),Number(body.warrantyMonths||6))});}catch(e){return NextResponse.json({ok:false,error:String(e.message||e)},{status:500});}}
+
+export async function POST(req) {
+  try {
+    const body = await req.json();
+    return NextResponse.json({
+      ok: true,
+      ...(await calcTotals(
+        body.model,
+        body.selectedOptions || [],
+        Number(body.distanceKm || 0),
+        Number(body.warrantyMonths || 6)
+      ))
+    });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: String(e.message || e) }, { status: 500 });
+  }
+}
