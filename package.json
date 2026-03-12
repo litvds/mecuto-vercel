@@ -1,4 +1,3 @@
-
 {
   "name": "mecuto-tkp",
   "private": true,
@@ -8,10 +7,10 @@
     "start": "next start"
   },
   "dependencies": {
+    "googleapis": "^140.0.0",
     "next": "14.2.5",
+    "pdf-lib": "^1.17.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "puppeteer-core": "^24.22.0",
-    "@sparticuz/chromium": "^143.0.0"
+    "react-dom": "^18.3.1"
   }
 }

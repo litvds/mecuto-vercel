@@ -145,14 +145,7 @@ export default function Page() {
     if (!searchResult?.model) return;
 
     const payload = {
-      templateName,
-      customer,
-      inn,
-      contact,
-      position,
-      phone,
-      email,
-      preparedBy,
+      templateName, customer, inn, contact, position, phone, email, preparedBy,
       distanceKm: parseFlexibleNumber(distanceKm || 0),
       warrantyMonths: Number(warrantyMonths || 6),
       model: searchResult.model,
@@ -162,13 +155,11 @@ export default function Page() {
     const device = detectDevice();
 
     if (device === "ios") {
-      // Safari iPhone/iPad: не popup, а переход в этой же вкладке
       submitPdfForm(payload, "_self");
       return;
     }
 
     if (device === "android") {
-      // Android: отдельная вкладка обычно работает стабильно
       submitPdfForm(payload, "_blank");
       return;
     }

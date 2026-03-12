@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import puppeteer from "puppeteer-core";
-import chromium from "@sparticuz/chromium";
 import { buildQuoteData } from "../../../lib/rawBusiness";
-import { renderTemplate } from "../../../lib/pdfTemplates";
+import { buildPdfBuffer } from "../../../lib/pdfLibBuilder";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -33,39 +31,17 @@ async function getPayload(req) {
 
   const text = await req.text();
   if (text) {
-    try {
-      return JSON.parse(text);
-    } catch {}
+    try { return JSON.parse(text); } catch {}
   }
 
   throw new Error("Неподдерживаемый формат запроса");
 }
 
 export async function POST(req) {
-  let browser = null;
-
   try {
     const body = await getPayload(req);
     const data = await buildQuoteData(body);
-    const html = renderTemplate(data);
-
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: { width: 1440, height: 2048, deviceScaleFactor: 1 },
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless
-    });
-
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
-    const pdf = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      preferCSSPageSize: true
-    });
-
-    await browser.close();
+    const pdf = await buildPdfBuffer(data);
 
     const filename =
       safeFileName(`${data.tkpNumber} ${data.customer} ${data.modelTitleTop}`) + ".pdf";
@@ -78,10 +54,6 @@ export async function POST(req) {
       }
     });
   } catch (e) {
-    if (browser) {
-      try { await browser.close(); } catch {}
-    }
-
     return NextResponse.json(
       { ok: false, error: String(e.message || e) },
       { status: 500 }

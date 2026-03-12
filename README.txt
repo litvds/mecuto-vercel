@@ -1,14 +1,18 @@
-ГОТОВЫЙ ПАТЧ ДЛЯ PDF
+СТАБИЛЬНЫЙ PDF ПАТЧ БЕЗ CHROMIUM
 
-Заменить файлы:
+Что заменить:
+- package.json
 - app/page.js
 - app/api/build-tkp-pdf/route.js
+- добавить lib/pdfLibBuilder.js
 
-Как работает:
-- iPhone / iPad: открывает PDF в той же вкладке (без пустого popup)
-- Android: открывает PDF в новой вкладке
-- Компьютер: скачивает PDF
+Что меняется:
+- PDF теперь собирается через pdf-lib, без Puppeteer/Chromium
+- исчезает ошибка с @sparticuz/chromium на Vercel
+- iPhone/iPad открывает PDF в этой же вкладке
+- Android открывает PDF в новой вкладке
+- компьютер скачивает PDF
 
-Важно:
-- package.json уже должен содержать puppeteer-core и @sparticuz/chromium
-- route поддерживает и form-data, и JSON
+После замены:
+npm install
+npm run dev
