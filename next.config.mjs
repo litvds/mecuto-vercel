@@ -1,10 +1,2 @@
-const nextConfig = {
-  images: {
-    remotePatterns: [
-      { protocol: "https", hostname: "**" },
-      { protocol: "http", hostname: "**" }
-    ]
-  }
-};
-
+const nextConfig = {};
 export default nextConfig;
