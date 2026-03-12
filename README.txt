@@ -1,22 +1,14 @@
+ГОТОВЫЙ ПАТЧ ДЛЯ PDF
 
-УСТАНОВКА
+Заменить файлы:
+- app/page.js
+- app/api/build-tkp-pdf/route.js
 
-1. Замените файлы:
+Как работает:
+- iPhone / iPad: открывает PDF в той же вкладке (без пустого popup)
+- Android: открывает PDF в новой вкладке
+- Компьютер: скачивает PDF
 
-app/page.js
-app/api/build-tkp-pdf/route.js
-package.json
-
-2. Выполните:
-
-npm install
-
-3. Запустите:
-
-npm run dev
-
-Работа:
-
-iPhone / iPad → PDF открывается в новой вкладке
-Android → PDF открывается в новой вкладке
-Компьютер → PDF скачивается
+Важно:
+- package.json уже должен содержать puppeteer-core и @sparticuz/chromium
+- route поддерживает и form-data, и JSON
