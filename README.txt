@@ -1,20 +1,15 @@
-MECUTO raw-sheets Vercel starter v2
+ПАТЧ ДЛЯ PDF НА МОБИЛЬНЫХ
 
-Works with original tabs:
-- Summury (Под заказ)
-- Stock (Со склада)
-- Delivery
-- Service
+Что заменить:
+1. package.json
+2. app/page.js
+3. добавить app/api/build-tkp-pdf/route.js
 
-Two print templates:
-- style-size (Стиль Размер)
-- alternative-style (Альтернативный стиль)
+Что делает:
+- генерирует НАСТОЯЩИЙ PDF на сервере
+- на телефоне открывает PDF в новой вкладке
+- на компьютере скачивает PDF автоматически
 
-Images folder:
-public/images/machines
-Names:
-300.png 400.png 500.png 600.png 700.png 800.png 1200.png 1600.png 2000.png 3000.png
-
-How PDF works:
-Press "Сформировать ТКП" and a print-ready page opens in a new tab.
-Use browser Print / Save as PDF.
+После замены:
+npm install
+npm run dev

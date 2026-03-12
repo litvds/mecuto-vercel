@@ -6,6 +6,11 @@ function parseFlexibleNumber(value) {
   return Number(String(value || "").replace(",", "."));
 }
 
+function isProbablyMobile() {
+  if (typeof navigator === "undefined") return false;
+  return /Android|iPhone|iPad|iPod|Mobile|Opera Mini|IEMobile/i.test(navigator.userAgent);
+}
+
 export default function Page() {
   const [source, setSource] = useState("stock");
   const [sourceLabel, setSourceLabel] = useState("");
@@ -73,6 +78,7 @@ export default function Page() {
 
     const data = await res.json();
     setLoading(false);
+
     if (!data.ok) {
       alert(data.message || data.error || "Модель не найдена");
       return;
@@ -116,33 +122,57 @@ export default function Page() {
 
   async function buildTKP() {
     if (!searchResult?.model) return;
-    const newWin = window.open("", "_blank");
-    if (newWin) newWin.document.write("<p style='font-family:Arial;padding:20px'>Формирование ТКП...</p>");
 
-    const res = await fetch("/api/build-tkp", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        templateName,
-        customer, inn, contact, position, phone, email, preparedBy,
-        distanceKm: parseFlexibleNumber(distanceKm || 0),
-        warrantyMonths: Number(warrantyMonths || 6),
-        model: searchResult.model,
-        selectedOptions
-      })
-    });
+    const payload = {
+      templateName,
+      customer, inn, contact, position, phone, email, preparedBy,
+      distanceKm: parseFlexibleNumber(distanceKm || 0),
+      warrantyMonths: Number(warrantyMonths || 6),
+      model: searchResult.model,
+      selectedOptions
+    };
 
-    const data = await res.json();
-    if (!data.ok) {
-      if (newWin) newWin.close();
-      alert(data.error || "Ошибка формирования ТКП");
-      return;
-    }
+    const mobile = isProbablyMobile();
+    let tempWindow = null;
 
-    if (newWin) {
-      newWin.document.open();
-      newWin.document.write(data.html);
-      newWin.document.close();
+    try {
+      if (mobile) {
+        tempWindow = window.open("", "_blank");
+        if (tempWindow) {
+          tempWindow.document.write("<p style='font-family:Arial;padding:20px'>Подготовка PDF...</p>");
+        }
+      }
+
+      const res = await fetch("/api/build-tkp-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || "Ошибка создания PDF");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+
+      if (mobile) {
+        if (tempWindow) tempWindow.location.href = url;
+        else window.open(url, "_blank");
+      } else {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "TKP.pdf";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (e) {
+      if (tempWindow) tempWindow.close();
+      alert(String(e.message || e));
     }
   }
 
@@ -276,7 +306,7 @@ export default function Page() {
 
             <div style={mobileStickyFooterStyle}>
               <div style={modalTotalStyle}>Предварительный итог: {totals ? fmt(totals.total) : "—"}</div>
-              <button onClick={buildTKP} style={{ ...primaryBtn, minWidth: 220, width: "100%" }}>Сформировать ТКП</button>
+              <button onClick={buildTKP} style={{ ...primaryBtn, minWidth: 220, width: "100%" }}>Сформировать PDF</button>
             </div>
           </div>
         </div>
