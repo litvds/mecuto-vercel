@@ -128,7 +128,7 @@ export default function Page() {
         const quoteData = await quoteRes.json();
         if (seq !== searchSeq.current) return;
         if (quoteData.ok) setPreviewTotals(quoteData);
-      } catch (e) {
+      } catch {
         if (seq !== searchSeq.current) return;
         setPreviewSearchResult(null);
         setPreviewTotals(null);
@@ -136,7 +136,7 @@ export default function Page() {
       } finally {
         if (seq === searchSeq.current) setPreviewLoading(false);
       }
-    }, 450);
+    }, 400);
 
     return () => clearTimeout(t);
   }, [filterPayload, distanceKm, warrantyMonths]);
@@ -162,6 +162,7 @@ export default function Page() {
       setTotals(null);
       setSelectedOptions([]);
       setShowOptions(false);
+      setPreviewMessage("Введите параметры для автоматического подбора");
     }
   }
 
@@ -305,91 +306,103 @@ export default function Page() {
 
   return (
     <main style={mainStyle}>
+      <div style={heroWrapStyle}>
+        <div style={heroBadgeStyle}>MECUTO / TENOLY / RAZMER</div>
+        <div style={heroTitleStyle}>Конфигуратор ТКП 4.1</div>
+        <div style={heroSubStyle}>Подбор модели, опции и PDF в одном интерфейсе — без изменения backend и логики PDF.</div>
+      </div>
+
       <div style={pageGridStyle}>
         <div style={leftColStyle}>
           <div style={cardStyle}>
             <div style={headerWrapStyle}>
               <div>
-                <h1 style={{ fontSize: 28, margin: 0 }}>Подбор ТКП</h1>
+                <h1 style={{ fontSize: 30, margin: 0 }}>Подбор ТКП</h1>
                 <div style={{ color: "#666", marginTop: 8 }}>{sourceLabel}</div>
               </div>
               <img src="/images/logo.png" alt="Логотип" style={logoImageStyle} />
             </div>
 
-            <div style={formGridStyle}>
-              <Label>Наименование заказчика</Label><Input value={customer} onChange={setCustomer} />
-              <Label>ИНН</Label><Input value={inn} onChange={setInn} />
-              <Label>Контактное лицо</Label><Input value={contact} onChange={setContact} />
-              <Label>Должность</Label><Input value={position} onChange={setPosition} />
-              <Label>Телефон</Label><Input value={phone} onChange={setPhone} />
-              <Label>E-mail</Label><Input value={email} onChange={setEmail} />
-              <Label>Кто подготовил</Label><Input value={preparedBy} onChange={setPreparedBy} />
-            </div>
+            <Block title="Данные заказчика">
+              <div style={formGridStyle}>
+                <Label>Наименование заказчика</Label><Input value={customer} onChange={setCustomer} />
+                <Label>ИНН</Label><Input value={inn} onChange={setInn} />
+                <Label>Контактное лицо</Label><Input value={contact} onChange={setContact} />
+                <Label>Должность</Label><Input value={position} onChange={setPosition} />
+                <Label>Телефон</Label><Input value={phone} onChange={setPhone} />
+                <Label>E-mail</Label><Input value={email} onChange={setEmail} />
+                <Label>Кто подготовил</Label><Input value={preparedBy} onChange={setPreparedBy} />
+              </div>
+            </Block>
 
-            <hr style={{ margin: "26px 0", border: 0, borderTop: "1px dashed #bbb" }} />
+            <Block title="Источник и параметры">
+              <div style={radioRowStyle}>
+                <ChipRadio checked={source === "stock"} onClick={() => setSource("stock")} label="Из наличия" />
+                <ChipRadio checked={source === "summury"} onClick={() => setSource("summury")} label="Под заказ" />
+              </div>
 
-            <SectionTitle>Источник</SectionTitle>
-            <div style={radioRowStyle}>
-              <ChipRadio checked={source === "stock"} onClick={() => setSource("stock")} label="Из наличия" />
-              <ChipRadio checked={source === "summury"} onClick={() => setSource("summury")} label="Под заказ" />
-            </div>
+              <div style={adaptiveGridStyle}>
+                <FieldBlock label="Максимальный диаметр точения"><Input value={maxTurnDia} onChange={setMaxTurnDia} inputMode="decimal" /></FieldBlock>
+                <FieldBlock label="Максимальная длина точения"><Input value={maxTurnLen} onChange={setMaxTurnLen} inputMode="decimal" /></FieldBlock>
+                <FieldBlock label="Диаметр прутка"><Input value={barDia} onChange={setBarDia} inputMode="decimal" /></FieldBlock>
+                <FieldBlock label="Диаметр патрона">
+                  <select value={chuckDia} onChange={e => setChuckDia(e.target.value)} style={inputStyle}>
+                    <option value="">—</option>
+                    {chuckValues.map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </FieldBlock>
+              </div>
 
-            <SectionTitle>Параметры подбора</SectionTitle>
-            <div style={adaptiveGridStyle}>
-              <FieldBlock label="Максимальный диаметр точения"><Input value={maxTurnDia} onChange={setMaxTurnDia} inputMode="decimal" /></FieldBlock>
-              <FieldBlock label="Максимальная длина точения"><Input value={maxTurnLen} onChange={setMaxTurnLen} inputMode="decimal" /></FieldBlock>
-              <FieldBlock label="Диаметр прутка"><Input value={barDia} onChange={setBarDia} inputMode="decimal" /></FieldBlock>
-              <FieldBlock label="Диаметр патрона">
-                <select value={chuckDia} onChange={e => setChuckDia(e.target.value)} style={inputStyle}>
-                  <option value="">—</option>
-                  {chuckValues.map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </FieldBlock>
-            </div>
+              <div style={chipGridStyle}>
+                <ChoiceChip checked={hasM} onClick={() => setHasM(!hasM)} label="С приводным инструментом" />
+                <ChoiceChip checked={hasY} onClick={() => { const v = !hasY; setHasY(v); if (v) setHasM(true); }} label="С осью Y" />
+                <ChoiceChip checked={hasS} onClick={() => { const v = !hasS; setHasS(v); if (v) setHasM(true); }} label="С противошпинделем" />
+              </div>
+            </Block>
 
-            <div style={checkboxWrapStyle}>
-              <ChoiceChip checked={hasM} onClick={() => setHasM(!hasM)} label="С приводным инструментом" />
-              <ChoiceChip checked={hasY} onClick={() => { const v = !hasY; setHasY(v); if (v) setHasM(true); }} label="С осью Y" />
-              <ChoiceChip checked={hasS} onClick={() => { const v = !hasS; setHasS(v); if (v) setHasM(true); }} label="С противошпинделем" />
-            </div>
+            <Block title="Расчет и выпуск ТКП">
+              <div style={adaptiveGridStyle}>
+                <FieldBlock label="Расстояние до места поставки"><Input value={distanceKm} onChange={setDistanceKm} inputMode="decimal" /></FieldBlock>
+                <FieldBlock label="Гарантия месяцев">
+                  <div style={radioRowStyle}>
+                    {[6, 12, 24].map(m => <ChipRadio key={m} checked={warrantyMonths === m} onClick={() => setWarrantyMonths(m)} label={String(m)} />)}
+                  </div>
+                </FieldBlock>
+              </div>
 
-            <SectionTitle>Расчет</SectionTitle>
-            <div style={adaptiveGridStyle}>
-              <FieldBlock label="Расстояние до места поставки"><Input value={distanceKm} onChange={setDistanceKm} inputMode="decimal" /></FieldBlock>
-              <FieldBlock label="Гарантия месяцев">
-                <div style={radioRowStyle}>
-                  {[6, 12, 24].map(m => <ChipRadio key={m} checked={warrantyMonths === m} onClick={() => setWarrantyMonths(m)} label={String(m)} />)}
-                </div>
-              </FieldBlock>
-            </div>
+              <div style={adaptiveGridStyle}>
+                <FieldBlock label="Шаблон ТКП">
+                  <div style={radioRowStyle}>
+                    <ChipRadio checked={templateName === "style-size"} onClick={() => setTemplateName("style-size")} label="Стиль Размер" />
+                    <ChipRadio checked={templateName === "alternative-style"} onClick={() => setTemplateName("alternative-style")} label="Альтернативный стиль" />
+                  </div>
+                </FieldBlock>
+              </div>
 
-            <div style={adaptiveGridStyle}>
-              <FieldBlock label="Шаблон ТКП">
-                <div style={radioRowStyle}>
-                  <ChipRadio checked={templateName === "style-size"} onClick={() => setTemplateName("style-size")} label="Стиль Размер" />
-                  <ChipRadio checked={templateName === "alternative-style"} onClick={() => setTemplateName("alternative-style")} label="Альтернативный стиль" />
-                </div>
-              </FieldBlock>
-            </div>
-
-            <div style={buttonsWrapStyle}>
-              <button onClick={handleSearchAndOpenOptions} style={primaryBtn} disabled={loading}>
-                {loading ? "Подбираем..." : "Перейти к выбору опций"}
-              </button>
-              <button onClick={clearForm} style={secondaryBtn}>Очистить форму</button>
-            </div>
+              <div style={buttonsWrapStyle}>
+                <button onClick={handleSearchAndOpenOptions} style={primaryBtn} disabled={loading}>
+                  {loading ? "Подбираем..." : "Перейти к выбору опций"}
+                </button>
+                <button onClick={clearForm} style={secondaryBtn}>Очистить форму</button>
+              </div>
+            </Block>
           </div>
         </div>
 
         <div style={rightColStyle}>
           <div style={stickyCardStyle}>
-            <div style={cardLabelStyle}>Живой подбор</div>
-            {previewLoading && <div style={hintStyle}>Подбираем...</div>}
+            <div style={stickyTopRowStyle}>
+              <div style={cardLabelStyle}>Живой подбор</div>
+              {previewLoading && <div style={loaderStyle}>обновление…</div>}
+            </div>
+
             {!previewLoading && !modelForCard && <div style={hintStyle}>{previewMessage}</div>}
 
             {modelForCard && (
               <>
                 <div style={modelTitleStyle}>{modelForCard.model_name}</div>
+                <div style={modelSubtitleStyle}>Подходит под заданные параметры</div>
+
                 <div style={metaPillsStyle}>
                   <span style={pillStyle}>{modelForCard.source === "stock" ? "Со склада" : "Под заказ"}</span>
                   <span style={pillStyle}>Серия {modelForCard.series}</span>
@@ -429,7 +442,7 @@ export default function Page() {
             <div style={modalHeaderStyle}>
               <div>
                 <h2 style={{ margin: 0, fontSize: 22 }}>Выберите опции для станка {searchResult.model.model_name}</h2>
-                <div style={{ color: "#666", marginTop: 6 }}>Быстрый расчет обновляется автоматически</div>
+                <div style={{ color: "#666", marginTop: 6 }}>Цена обновляется автоматически</div>
               </div>
               <button onClick={() => setShowOptions(false)} style={{ ...secondaryBtn, width: 44, minWidth: 44, padding: 8 }}>×</button>
             </div>
@@ -437,7 +450,7 @@ export default function Page() {
             <div style={modalBodyStyle}>
               {Object.keys(grouped).sort((a, b) => Number(a) - Number(b)).map(key => (
                 <div key={key} style={optionGroupStyle}>
-                  <div style={{ fontWeight: "bold", marginBottom: 12, fontSize: 16 }}>{grouped[key].title}</div>
+                  <div style={optionGroupTitleStyle}>{grouped[key].title}</div>
                   <div style={optionsGridStyle}>
                     {grouped[key].items.map((opt, idx) => {
                       const checked = selectedOptions.some(o => o.row_num === opt.row_num);
@@ -453,11 +466,9 @@ export default function Page() {
                             ...(disabled ? optionCardDisabledStyle : {})
                           }}
                         >
-                          <div style={{ fontWeight: 700, textAlign: "left", minHeight: 42 }}>{opt.option_name}</div>
-                          <div style={{ marginTop: 10, textAlign: "left", color: checked || disabled ? "#111" : "#555", fontSize: 18 }}>
-                            {disabled ? "включено" : fmt(opt.price)}
-                          </div>
-                          <div style={{ marginTop: 8, textAlign: "left", fontSize: 12, color: checked || disabled ? "#0b5" : "#777" }}>
+                          <div style={optionNameStyle}>{opt.option_name}</div>
+                          <div style={optionPriceStyle}>{disabled ? "включено" : fmt(opt.price)}</div>
+                          <div style={optionHintStyle}>
                             {disabled ? "Входит в комплектацию" : checked ? "Добавлено" : "Нажмите, чтобы добавить"}
                           </div>
                         </button>
@@ -482,12 +493,20 @@ export default function Page() {
   );
 }
 
+function Block({ title, children }) {
+  return (
+    <div style={blockStyle}>
+      <div style={blockTitleStyle}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
 function Label({ children }) { return <div style={{ fontSize: 16 }}>{children}</div>; }
-function SectionTitle({ children }) { return <div style={{ marginTop: 18, marginBottom: 10, fontSize: 14, fontWeight: 700, color: "#444", textTransform: "uppercase", letterSpacing: ".04em" }}>{children}</div>; }
 function FieldBlock({ label, children }) { return <div><div style={{ fontSize: 16, marginBottom: 8 }}>{label}</div>{children}</div>; }
 function Input({ value, onChange, inputMode = "text" }) { return <input value={value} onChange={e => onChange(e.target.value)} inputMode={inputMode} style={inputStyle} />; }
 function ChipRadio({ checked, onClick, label }) { return <button type="button" onClick={onClick} style={{ ...chipStyle, ...(checked ? chipSelectedStyle : {}) }}>{label}</button>; }
-function ChoiceChip({ checked, onClick, label }) { return <button type="button" onClick={onClick} style={{ ...chipStyle, ...(checked ? chipSelectedStyle : {}) }}>{label}</button>; }
+function ChoiceChip({ checked, onClick, label }) { return <button type="button" onClick={onClick} style={{ ...choiceChipStyle, ...(checked ? chipSelectedStyle : {}) }}>{label}</button>; }
 function Row({ label, value }) {
   return (
     <div style={rowStyle}>
@@ -497,44 +516,58 @@ function Row({ label, value }) {
   );
 }
 
-const mainStyle = { minHeight: "100vh", background: "#f5f5f7", padding: 12, fontFamily: "Arial, sans-serif", boxSizing: "border-box" };
+const mainStyle = { minHeight: "100vh", background: "linear-gradient(180deg, #f5f5f7 0%, #eceef2 100%)", padding: 12, fontFamily: "Arial, sans-serif", boxSizing: "border-box" };
+const heroWrapStyle = { maxWidth: 1320, margin: "0 auto 14px", background: "linear-gradient(135deg, #111 0%, #1b2430 100%)", color: "#fff", borderRadius: 20, padding: "18px 20px", boxShadow: "0 8px 24px rgba(0,0,0,.12)" };
+const heroBadgeStyle = { display: "inline-block", fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", opacity: .75 };
+const heroTitleStyle = { fontSize: 30, fontWeight: 800, marginTop: 8 };
+const heroSubStyle = { marginTop: 8, opacity: .84, lineHeight: 1.4, maxWidth: 760 };
 const pageGridStyle = { maxWidth: 1320, margin: "0 auto", display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(320px,420px)", gap: 16, alignItems: "start" };
 const leftColStyle = { minWidth: 0 };
 const rightColStyle = { minWidth: 0 };
-const cardStyle = { background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 8px 24px rgba(0,0,0,.08)" };
-const stickyCardStyle = { position: "sticky", top: 12, background: "#fff", borderRadius: 16, padding: 18, boxShadow: "0 8px 24px rgba(0,0,0,.08)" };
+const cardStyle = { background: "#fff", borderRadius: 20, padding: 20, boxShadow: "0 8px 24px rgba(0,0,0,.08)" };
+const stickyCardStyle = { position: "sticky", top: 12, background: "#fff", borderRadius: 20, padding: 18, boxShadow: "0 8px 24px rgba(0,0,0,.08)" };
 const headerWrapStyle = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" };
 const logoImageStyle = { width: 140, maxWidth: "40vw", height: "auto", objectFit: "contain" };
-const formGridStyle = { display: "grid", gridTemplateColumns: "minmax(140px, 220px) 1fr", gap: 14, marginTop: 24, alignItems: "center" };
-const adaptiveGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, alignItems: "start", marginTop: 8 };
-const checkboxWrapStyle = { display: "flex", gap: 12, marginTop: 14, flexWrap: "wrap" };
+const blockStyle = { border: "1px solid #ececec", borderRadius: 16, padding: 16, marginTop: 16, background: "#fff" };
+const blockTitleStyle = { fontSize: 14, fontWeight: 700, color: "#444", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 14 };
+const formGridStyle = { display: "grid", gridTemplateColumns: "minmax(140px, 220px) 1fr", gap: 14, alignItems: "center" };
+const adaptiveGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, alignItems: "start" };
+const chipGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginTop: 14 };
 const radioRowStyle = { display: "flex", gap: 10, flexWrap: "wrap" };
-const buttonsWrapStyle = { display: "flex", justifyContent: "space-between", gap: 12, marginTop: 28, flexWrap: "wrap" };
-const inputStyle = { width: "100%", padding: "12px 14px", border: "1px solid #bbb", borderRadius: 10, fontSize: 16, boxSizing: "border-box", background: "#fff" };
-const primaryBtn = { padding: "14px 22px", border: "1px solid #111", background: "#111", color: "#fff", borderRadius: 12, cursor: "pointer", minWidth: 220 };
-const secondaryBtn = { padding: "14px 22px", border: "1px solid #999", background: "#fff", borderRadius: 12, cursor: "pointer", minWidth: 200 };
+const buttonsWrapStyle = { display: "flex", justifyContent: "space-between", gap: 12, marginTop: 18, flexWrap: "wrap" };
+const inputStyle = { width: "100%", padding: "12px 14px", border: "1px solid #bbb", borderRadius: 12, fontSize: 16, boxSizing: "border-box", background: "#fff" };
+const primaryBtn = { padding: "14px 22px", border: "1px solid #111", background: "#111", color: "#fff", borderRadius: 14, cursor: "pointer", minWidth: 220 };
+const secondaryBtn = { padding: "14px 22px", border: "1px solid #999", background: "#fff", borderRadius: 14, cursor: "pointer", minWidth: 200 };
 const chipStyle = { padding: "10px 14px", borderRadius: 999, border: "1px solid #cfcfcf", background: "#fff", cursor: "pointer" };
+const choiceChipStyle = { padding: "12px 14px", borderRadius: 14, border: "1px solid #d8d8d8", background: "#fff", cursor: "pointer", textAlign: "left" };
 const chipSelectedStyle = { border: "1px solid #111", background: "#111", color: "#fff" };
+const stickyTopRowStyle = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 };
+const loaderStyle = { fontSize: 12, color: "#666" };
 const cardLabelStyle = { fontSize: 13, fontWeight: 700, color: "#666", textTransform: "uppercase", letterSpacing: ".05em" };
 const hintStyle = { marginTop: 14, color: "#666", lineHeight: 1.4 };
-const modelTitleStyle = { fontSize: 28, fontWeight: 800, marginTop: 10, lineHeight: 1.1 };
+const modelTitleStyle = { fontSize: 30, fontWeight: 800, marginTop: 10, lineHeight: 1.08 };
+const modelSubtitleStyle = { color: "#666", marginTop: 6 };
 const metaPillsStyle = { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 };
 const pillStyle = { padding: "6px 10px", borderRadius: 999, background: "#f2f2f2", fontSize: 12 };
-const imageWrapStyle = { marginTop: 14, borderRadius: 14, overflow: "hidden", background: "#fafafa", border: "1px solid #eee" };
-const machinePreviewStyle = { width: "100%", height: 240, objectFit: "contain", display: "block" };
-const priceBoxStyle = { marginTop: 14, padding: 16, borderRadius: 14, background: "#111", color: "#fff" };
+const imageWrapStyle = { marginTop: 14, borderRadius: 16, overflow: "hidden", background: "#fafafa", border: "1px solid #eee" };
+const machinePreviewStyle = { width: "100%", height: 250, objectFit: "contain", display: "block" };
+const priceBoxStyle = { marginTop: 14, padding: 16, borderRadius: 16, background: "linear-gradient(135deg, #111 0%, #2b2b2b 100%)", color: "#fff" };
 const priceCaptionStyle = { fontSize: 12, opacity: .8 };
-const priceValueStyle = { fontSize: 32, fontWeight: 800, marginTop: 4 };
-const miniTableStyle = { marginTop: 14, border: "1px solid #eee", borderRadius: 12, overflow: "hidden" };
+const priceValueStyle = { fontSize: 34, fontWeight: 800, marginTop: 4 };
+const miniTableStyle = { marginTop: 14, border: "1px solid #eee", borderRadius: 14, overflow: "hidden" };
 const rowStyle = { display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 14px", borderBottom: "1px solid #eee" };
 const overlayStyle = { position: "fixed", inset: 0, background: "rgba(0,0,0,.32)", display: "flex", alignItems: "center", justifyContent: "center", padding: 8, boxSizing: "border-box", zIndex: 50 };
 const modalStyle = { width: "min(1320px, 98vw)", height: "min(920px, 96vh)", background: "#fff", borderRadius: 20, padding: 14, boxShadow: "0 20px 60px rgba(0,0,0,.18)", display: "flex", flexDirection: "column" };
 const modalHeaderStyle = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12, flexWrap: "wrap" };
 const modalBodyStyle = { flex: 1, overflowY: "auto", paddingRight: 4 };
 const mobileStickyFooterStyle = { marginTop: 12, display: "grid", gridTemplateColumns: "1fr minmax(220px,340px)", gap: 10, borderTop: "1px solid #eee", paddingTop: 12 };
-const modalTotalStyle = { padding: 12, background: "#f8f8f8", borderRadius: 10, fontWeight: "bold" };
+const modalTotalStyle = { padding: 12, background: "#f8f8f8", borderRadius: 14, fontWeight: "bold" };
 const optionGroupStyle = { border: "1px solid #ddd", borderRadius: 16, padding: 12, marginBottom: 12 };
+const optionGroupTitleStyle = { fontWeight: "bold", marginBottom: 12, fontSize: 16 };
 const optionsGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 };
 const optionCardStyle = { border: "1px solid #ddd", borderRadius: 16, padding: 16, background: "#fff", cursor: "pointer", textAlign: "left", transition: "all .2s ease" };
 const optionCardSelectedStyle = { border: "1px solid #111", background: "#f4f7fb", boxShadow: "inset 0 0 0 1px #111" };
 const optionCardDisabledStyle = { opacity: 1, cursor: "default", background: "#f8f8f8" };
+const optionNameStyle = { fontWeight: 700, textAlign: "left", minHeight: 42 };
+const optionPriceStyle = { marginTop: 10, textAlign: "left", color: "#111", fontSize: 18 };
+const optionHintStyle = { marginTop: 8, textAlign: "left", fontSize: 12, color: "#777" };
