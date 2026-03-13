@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser, requireRole } from "../../../lib/auth";
 import { buildQuoteData } from "../../../lib/rawBusiness";
-import { buildPdfBuffer } from "../../../lib/pdfLibBuilder";
+import { buildDocxBuffer } from "../../../lib/docxBuilder";
 import { appendTKPLog } from "../../../lib/rolesSheets";
 
 export const runtime = "nodejs";
@@ -37,13 +37,12 @@ async function getPayload(req) {
 export async function POST(req) {
   try {
     const user = await getCurrentUser();
-    requireRole(user, ["manager", "sales_director", "ceo"]);
+    requireRole(user, ["sales_director", "ceo"]);
 
     const body = await getPayload(req);
     const data = await buildQuoteData(body);
-    const pdf = await buildPdfBuffer(data);
-    const asciiName = asciiFileName(`${data.tkpNumber || "TKP"} ${data.customer || ""} ${data.modelTitleTop || ""}`) + ".pdf";
-    const download = new URL(req.url).searchParams.get("download") === "1";
+    const docx = await buildDocxBuffer(data);
+    const asciiName = asciiFileName(`${data.tkpNumber || "TKP"} ${data.customer || ""} ${data.modelTitleTop || ""}`) + ".docx";
 
     await appendTKPLog({
       created_at: new Date().toISOString(),
@@ -55,14 +54,14 @@ export async function POST(req) {
       model: data.modelTitleTop || "",
       source: data.model?.source || "",
       total: data.totals?.total || 0,
-      files: "PDF",
+      files: "DOCX",
       tkp_number: data.tkpNumber || "",
     });
 
-    return new NextResponse(pdf, {
+    return new NextResponse(docx, {
       headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${asciiName}"`,
+        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": `attachment; filename="${asciiName}"`,
         "Cache-Control": "no-store"
       }
     });

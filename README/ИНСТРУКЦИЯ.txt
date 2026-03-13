@@ -1,0 +1,43 @@
+
+PATCH: Plain Password Authentication
+
+Этот патч убирает bcrypt и использует обычные пароли из Google Sheets.
+
+Что заменить в проекте:
+
+1. Замените файл:
+app/api/auth/login/route.js
+
+на файл из этого архива.
+
+2. В Google Sheets измените лист users.
+
+Было:
+login | password_hash | role | full_name | is_active
+
+Стало:
+login | password | role | full_name | is_active
+
+Пример:
+
+login | password | role | full_name | is_active
+ivanov | 12345 | manager | Иванов И.И. | TRUE
+petrov | Qwerty2026 | sales_director | Петров П.П. | TRUE
+ceo | SuperPass777 | ceo | Генеральный директор | TRUE
+
+ВАЖНО:
+
+Название листа:
+users
+
+Роли должны быть строго:
+
+manager
+sales_director
+ceo
+
+После замены файлов перезапустите сервер:
+
+npm run dev
+или
+npm run build

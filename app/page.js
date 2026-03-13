@@ -2,10 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-function parseFlexibleNumber(value) {
-  return Number(String(value || "").replace(",", "."));
-}
-
+function parseFlexibleNumber(value) { return Number(String(value || "").replace(",", ".")); }
 function detectDevice() {
   if (typeof navigator === "undefined") return "desktop";
   const ua = navigator.userAgent || "";
@@ -13,24 +10,24 @@ function detectDevice() {
   if (/Android/i.test(ua)) return "android";
   return "desktop";
 }
-
-function fmt(v) {
-  return Number(v || 0).toLocaleString("ru-RU");
-}
-
-function getMachineImage(model) {
-  if (!model?.series) return "";
-  return `/images/machines/${model.series}.png`;
+function fmt(v) { return Number(v || 0).toLocaleString("ru-RU"); }
+function getMachineImage(model) { return model?.series ? `/images/machines/${model.series}.png` : ""; }
+function roleTitle(role) {
+  return ({ manager: "Менеджер по продажам", sales_director: "Директор по продажам", ceo: "Генеральный директор" })[role] || role;
 }
 
 export default function Page() {
+  const [me, setMe] = useState(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [login, setLogin] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
   const [isMobile, setIsMobile] = useState(false);
 
   const [source, setSource] = useState("stock");
   const [sourceLabel, setSourceLabel] = useState("");
   const [chuckValues, setChuckValues] = useState([]);
   const [templateName, setTemplateName] = useState("style-size");
-
   const [customer, setCustomer] = useState("");
   const [inn, setInn] = useState("");
   const [contact, setContact] = useState("");
@@ -38,18 +35,15 @@ export default function Page() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [preparedBy, setPreparedBy] = useState("");
-
   const [maxTurnDia, setMaxTurnDia] = useState("");
   const [maxTurnLen, setMaxTurnLen] = useState("");
   const [barDia, setBarDia] = useState("");
   const [chuckDia, setChuckDia] = useState("");
   const [distanceKm, setDistanceKm] = useState("");
   const [warrantyMonths, setWarrantyMonths] = useState(6);
-
   const [hasM, setHasM] = useState(false);
   const [hasY, setHasY] = useState(false);
   const [hasS, setHasS] = useState(false);
-
   const [searchResult, setSearchResult] = useState(null);
   const [previewSearchResult, setPreviewSearchResult] = useState(null);
   const [showOptions, setShowOptions] = useState(false);
@@ -60,6 +54,15 @@ export default function Page() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewMessage, setPreviewMessage] = useState("Введите параметры для автоматического подбора");
   const searchSeq = useRef(0);
+
+  useEffect(() => {
+    (async () => {
+      const res = await fetch("/api/auth/me");
+      const data = await res.json();
+      setMe(data.user || null);
+      setCheckingAuth(false);
+    })();
+  }, []);
 
   useEffect(() => {
     const apply = () => setIsMobile(window.innerWidth <= 820);
@@ -79,9 +82,10 @@ export default function Page() {
     wantS: hasS
   }), [source, maxTurnDia, maxTurnLen, barDia, chuckDia, hasM, hasY, hasS]);
 
-  useEffect(() => { loadMeta(source); }, [source]);
+  useEffect(() => { if (me) loadMeta(source); }, [source, me]);
 
   useEffect(() => {
+    if (!me) return;
     const hasAnyFilter =
       filterPayload.chuck_max_dia > 0 ||
       filterPayload.max_len > 0 ||
@@ -109,7 +113,6 @@ export default function Page() {
           body: JSON.stringify(filterPayload)
         });
         const data = await res.json();
-
         if (seq !== searchSeq.current) return;
 
         if (!data.ok) {
@@ -147,11 +150,33 @@ export default function Page() {
     }, 350);
 
     return () => clearTimeout(t);
-  }, [filterPayload, distanceKm, warrantyMonths]);
+  }, [filterPayload, distanceKm, warrantyMonths, me]);
 
   useEffect(() => {
     if (searchResult?.model) calcTotalsNow();
   }, [searchResult, selectedOptions, distanceKm, warrantyMonths]);
+
+  async function doLogin(e) {
+    e.preventDefault();
+    setAuthError("");
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ login, password })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      setAuthError(data.error || "Ошибка входа");
+      return;
+    }
+    setMe(data.user);
+    setPassword("");
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    location.reload();
+  }
 
   async function loadMeta(src) {
     const res = await fetch("/api/source-meta", {
@@ -227,75 +252,70 @@ export default function Page() {
     setSelectedOptions(exists ? selectedOptions.filter((o) => o.row_num !== opt.row_num) : [...selectedOptions, opt]);
   }
 
-  function submitPdfForm(payload, target = "_blank") {
+  function submitFormToRoute(payload, route) {
     const form = document.createElement("form");
     form.method = "POST";
-    form.action = "/api/build-tkp-pdf";
-    form.target = target;
+    form.action = route;
+    form.target = "_self";
     form.style.display = "none";
-
     const input = document.createElement("input");
     input.type = "hidden";
     input.name = "payload";
     input.value = JSON.stringify(payload);
-
     form.appendChild(input);
     document.body.appendChild(form);
     form.submit();
     form.remove();
   }
 
-  async function buildTKP() {
-    if (!searchResult?.model) return;
+  async function downloadViaFetch(route, filenameBase) {
+    const payload = getPayload();
+    const res = await fetch(route, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const data = await res.text();
+      throw new Error(data || "Ошибка генерации файла");
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filenameBase;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
 
-    const payload = {
-      templateName,
-      customer,
-      inn,
-      contact,
-      position,
-      phone,
-      email,
-      preparedBy,
+  function getPayload() {
+    return {
+      templateName, customer, inn, contact, position, phone, email, preparedBy,
       distanceKm: parseFlexibleNumber(distanceKm || 0),
       warrantyMonths: Number(warrantyMonths || 6),
       model: searchResult.model,
       selectedOptions
     };
+  }
 
+  async function handleGenerate(kind) {
+    if (!searchResult?.model) return;
     const device = detectDevice();
-
-    if (device === "ios") {
-      submitPdfForm(payload, "_self");
-      return;
-    }
-
-    if (device === "android") {
-      submitPdfForm(payload, "_blank");
-      return;
-    }
+    const payload = getPayload();
 
     try {
-      const res = await fetch("/api/build-tkp-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(err || "Ошибка создания PDF");
+      if (device !== "desktop") {
+        if (kind === "pdf") submitFormToRoute(payload, "/api/build-tkp-pdf?download=1");
+        else if (kind === "docx") submitFormToRoute(payload, "/api/build-tkp-docx?download=1");
+        else submitFormToRoute(payload, "/api/build-tkp-bundle?download=1");
+        return;
       }
 
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "TKP.pdf";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      if (kind === "pdf") await downloadViaFetch("/api/build-tkp-pdf?download=1", "TKP.pdf");
+      else if (kind === "docx") await downloadViaFetch("/api/build-tkp-docx?download=1", "TKP.docx");
+      else await downloadViaFetch("/api/build-tkp-bundle?download=1", "TKP_bundle.zip");
     } catch (e) {
       alert(String(e.message || e));
     }
@@ -314,29 +334,89 @@ export default function Page() {
   const modelForCard = searchResult?.model || previewSearchResult?.model;
   const totalForCard = totals?.total || previewTotals?.total || 0;
 
+  if (checkingAuth) return <main style={{ padding: 24, fontFamily: "Arial" }}>Загрузка...</main>;
+
+  if (!me) {
+    return (
+      <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#f5f5f7", fontFamily: "Arial", padding: 20 }}>
+        <form onSubmit={doLogin} style={{ width: "100%", maxWidth: 420, background: "#fff", borderRadius: 18, padding: 24, boxShadow: "0 8px 24px rgba(0,0,0,.08)" }}>
+          <h1 style={{ marginTop: 0 }}>Вход в систему</h1>
+          <div style={{ marginBottom: 8 }}>Логин</div>
+          <input value={login} onChange={(e) => setLogin(e.target.value)} style={styles.input} />
+          <div style={{ marginBottom: 8, marginTop: 14 }}>Пароль</div>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={styles.input} />
+          {authError && <div style={{ color: "crimson", marginTop: 12 }}>{authError}</div>}
+          <button type="submit" style={{ ...styles.primaryBtn(true), marginTop: 16 }}>Войти</button>
+        </form>
+      </main>
+    );
+  }
+
   return (
     <main style={styles.main}>
       <div style={styles.shell}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: isMobile ? "stretch" : "center",
+            marginBottom: 12,
+            flexWrap: "wrap"
+          }}
+        >
+          <div style={{ color: "#333", fontWeight: 600 }}>
+            {me.full_name || me.login} • {roleTitle(me.role)}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              flexDirection: "row",
+              width: isMobile ? "100%" : "auto",
+              justifyContent: isMobile ? "space-between" : "flex-end"
+            }}
+          >
+            {me.role === "ceo" && (
+              <a
+                href="/admin"
+                style={{
+                  ...styles.secondaryBtn(false),
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flex: isMobile ? 1 : "0 0 auto"
+                }}
+              >
+                Журнал ТКП
+              </a>
+            )}
+
+            <button
+              onClick={logout}
+              style={{
+                ...styles.secondaryBtn(false),
+                flex: isMobile ? 1 : "0 0 auto"
+              }}
+            >
+              Выйти
+            </button>
+          </div>
+        </div>
+
         <div style={styles.hero(isMobile)}>
           <div style={styles.heroBadge}>MECUTO / TENOLY / RAZMER</div>
-          <div style={styles.heroTitle(isMobile)}>Конфигуратор ТКП 4.1</div>
-          <div style={styles.heroSub(isMobile)}>Подбор модели, опции и PDF в одном интерфейсе.</div>
+          <div style={styles.heroTitle(isMobile)}>Конфигуратор ТКП V5</div>
+          <div style={styles.heroSub(isMobile)}>Роли, журнал ТКП, PDF и DOCX по правам доступа.</div>
         </div>
 
         <div style={styles.layout(isMobile)}>
           <div style={styles.left}>
             {isMobile && (
-              <PreviewCard
-                isMobile={isMobile}
-                previewLoading={previewLoading}
-                modelForCard={modelForCard}
-                totalForCard={totalForCard}
-                totals={totals}
-                previewTotals={previewTotals}
-                previewMessage={previewMessage}
-                handleSearchAndOpenOptions={handleSearchAndOpenOptions}
-                loading={loading}
-              />
+              <PreviewCard isMobile={isMobile} previewLoading={previewLoading} modelForCard={modelForCard} totalForCard={totalForCard} totals={totals} previewTotals={previewTotals} previewMessage={previewMessage} />
             )}
 
             <div style={styles.card}>
@@ -390,9 +470,7 @@ export default function Page() {
                   <FieldBlock label="Расстояние до места поставки"><Input value={distanceKm} onChange={setDistanceKm} inputMode="decimal" /></FieldBlock>
                   <FieldBlock label="Гарантия месяцев">
                     <div style={styles.radioRow(isMobile)}>
-                      {[6, 12, 24].map((m) => (
-                        <ChipRadio key={m} checked={warrantyMonths === m} onClick={() => setWarrantyMonths(m)} label={String(m)} />
-                      ))}
+                      {[6, 12, 24].map((m) => <ChipRadio key={m} checked={warrantyMonths === m} onClick={() => setWarrantyMonths(m)} label={String(m)} />)}
                     </div>
                   </FieldBlock>
                 </div>
@@ -407,10 +485,10 @@ export default function Page() {
                 </div>
 
                 <div style={styles.buttonGroup(isMobile)}>
-                  <button onClick={handleSearchAndOpenOptions} style={styles.primaryBtn(isMobile)} disabled={loading}>
+                  <button onClick={handleSearchAndOpenOptions} style={styles.secondaryBtn(true)} disabled={loading}>
                     {loading ? "Подбираем..." : "Перейти к выбору опций"}
                   </button>
-                  <button onClick={clearForm} style={styles.secondaryBtn(isMobile)}>Очистить форму</button>
+                  <button onClick={clearForm} style={styles.secondaryBtn(true)}>Очистить форму</button>
                 </div>
               </Block>
             </div>
@@ -418,17 +496,7 @@ export default function Page() {
 
           {!isMobile && (
             <div style={styles.right}>
-              <PreviewCard
-                isMobile={isMobile}
-                previewLoading={previewLoading}
-                modelForCard={modelForCard}
-                totalForCard={totalForCard}
-                totals={totals}
-                previewTotals={previewTotals}
-                previewMessage={previewMessage}
-                handleSearchAndOpenOptions={handleSearchAndOpenOptions}
-                loading={loading}
-              />
+              <PreviewCard isMobile={isMobile} previewLoading={previewLoading} modelForCard={modelForCard} totalForCard={totalForCard} totals={totals} previewTotals={previewTotals} previewMessage={previewMessage} />
             </div>
           )}
         </div>
@@ -454,16 +522,7 @@ export default function Page() {
                       const checked = selectedOptions.some((o) => o.row_num === opt.row_num);
                       const disabled = searchResult.model.source === "stock";
                       return (
-                        <button
-                          key={idx}
-                          onClick={() => toggleOption(opt)}
-                          disabled={disabled}
-                          style={{
-                            ...styles.optionCard,
-                            ...(checked || disabled ? styles.optionCardSelected : {}),
-                            ...(disabled ? styles.optionCardDisabled : {}),
-                          }}
-                        >
+                        <button key={idx} onClick={() => toggleOption(opt)} disabled={disabled} style={{ ...styles.optionCard, ...(checked || disabled ? styles.optionCardSelected : {}), ...(disabled ? styles.optionCardDisabled : {}) }}>
                           <div style={styles.optionName}>{opt.option_name}</div>
                           <div style={styles.optionPrice}>{disabled ? "включено" : fmt(opt.price)}</div>
                           <div style={styles.optionHint}>{disabled ? "Входит в комплектацию" : checked ? "Добавлено" : "Нажмите, чтобы добавить"}</div>
@@ -480,7 +539,10 @@ export default function Page() {
                 <div style={{ fontSize: 12, color: "#666" }}>Предварительный итог</div>
                 <div style={{ fontSize: isMobile ? 20 : 24, fontWeight: 800 }}>{fmt(totals?.total || 0)}</div>
               </div>
-              <button onClick={buildTKP} style={styles.primaryBtn(true)}>Сформировать PDF</button>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+                <button onClick={() => handleGenerate("pdf")} style={styles.primaryBtn(true)}>Сформировать PDF</button>
+                {(me.role === "sales_director" || me.role === "ceo") && <button onClick={() => handleGenerate("both")} style={styles.secondaryBtn(true)}>Сформировать PDF + DOCX</button>}
+              </div>
             </div>
           </div>
         </div>
@@ -489,216 +551,76 @@ export default function Page() {
   );
 }
 
-function PreviewCard({ isMobile, previewLoading, modelForCard, totalForCard, totals, previewTotals, previewMessage, handleSearchAndOpenOptions, loading }) {
+function PreviewCard({ isMobile, previewLoading, modelForCard, totalForCard, totals, previewTotals, previewMessage }) {
   return (
     <div style={styles.previewCard(isMobile)}>
       <div style={styles.previewHead}>
         <div style={styles.cardLabel}>Живой подбор</div>
         {previewLoading && <div style={styles.loader}>обновление…</div>}
       </div>
-
       {!previewLoading && !modelForCard && <div style={styles.hint}>{previewMessage}</div>}
-
       {modelForCard && (
         <>
           <div style={styles.modelTitle(isMobile)}>{modelForCard.model_name}</div>
           <div style={styles.modelSubtitle}>Подходит под заданные параметры</div>
-
           <div style={styles.pills}>
             <span style={styles.pill}>{modelForCard.source === "stock" ? "Со склада" : "Под заказ"}</span>
             <span style={styles.pill}>Серия {modelForCard.series}</span>
             <span style={styles.pill}>Масса {fmt(modelForCard.mass_kg)} кг</span>
           </div>
-
-          <div style={styles.imageWrap}>
-            <img src={getMachineImage(modelForCard)} alt={modelForCard.model_name} style={styles.machineImage} />
-          </div>
-
+          <div style={styles.imageWrap}><img src={getMachineImage(modelForCard)} alt={modelForCard.model_name} style={styles.machineImage} /></div>
           <div style={styles.priceHero}>
             <div style={{ fontSize: 12, opacity: .8 }}>Предварительный итог</div>
             <div style={{ fontSize: isMobile ? 28 : 34, fontWeight: 800, marginTop: 4 }}>{fmt(totalForCard)}</div>
           </div>
-
           <div style={styles.rowsBox}>
             <Row label="Базовая цена" value={totals?.base || previewTotals?.base || 0} />
             <Row label="Опции" value={totals?.options || previewTotals?.options || 0} />
             <Row label="Доставка" value={totals?.delivery || previewTotals?.delivery || 0} />
             <Row label="Гарантия" value={totals?.warranty || previewTotals?.warranty || 0} />
           </div>
-
-          {!isMobile && (
-            <button onClick={handleSearchAndOpenOptions} style={{ ...styles.primaryBtn(true), marginTop: 14 }} disabled={loading || previewLoading}>
-              Выбрать опции для этой модели
-            </button>
-          )}
         </>
       )}
     </div>
   );
 }
 
-function Block({ title, children }) {
-  return <div style={styles.block}><div style={styles.blockTitle}>{title}</div>{children}</div>;
-}
-function Label({ children, isMobile }) {
-  return <div style={{ fontSize: isMobile ? 15 : 16, fontWeight: isMobile ? 600 : 400 }}>{children}</div>;
-}
-function FieldBlock({ label, children }) {
-  return <div><div style={{ fontSize: 16, marginBottom: 8 }}>{label}</div>{children}</div>;
-}
-function Input({ value, onChange, inputMode = "text" }) {
-  return <input value={value} onChange={(e) => onChange(e.target.value)} inputMode={inputMode} style={styles.input} />;
-}
-function ChipRadio({ checked, onClick, label }) {
-  return <button type="button" onClick={onClick} style={{ ...styles.chip, ...(checked ? styles.chipSelected : {}) }}>{label}</button>;
-}
-function ChoiceChip({ checked, onClick, label }) {
-  return <button type="button" onClick={onClick} style={{ ...styles.choiceChip, ...(checked ? styles.chipSelected : {}) }}>{label}</button>;
-}
-function Row({ label, value }) {
-  return <div style={styles.row}><div style={{ color: "#666" }}>{label}</div><div style={{ fontWeight: 700 }}>{fmt(value)}</div></div>;
-}
+function Block({ title, children }) { return <div style={styles.block}><div style={styles.blockTitle}>{title}</div>{children}</div>; }
+function Label({ children, isMobile }) { return <div style={{ fontSize: isMobile ? 15 : 16, fontWeight: isMobile ? 600 : 400 }}>{children}</div>; }
+function FieldBlock({ label, children }) { return <div><div style={{ fontSize: 16, marginBottom: 8 }}>{label}</div>{children}</div>; }
+function Input({ value, onChange, inputMode = "text" }) { return <input value={value} onChange={(e) => onChange(e.target.value)} inputMode={inputMode} style={styles.input} />; }
+function ChipRadio({ checked, onClick, label }) { return <button type="button" onClick={onClick} style={{ ...styles.chip, ...(checked ? styles.chipSelected : {}) }}>{label}</button>; }
+function ChoiceChip({ checked, onClick, label }) { return <button type="button" onClick={onClick} style={{ ...styles.choiceChip, ...(checked ? styles.chipSelected : {}) }}>{label}</button>; }
+function Row({ label, value }) { return <div style={styles.row}><div style={{ color: "#666" }}>{label}</div><div style={{ fontWeight: 700 }}>{fmt(value)}</div></div>; }
 
 const styles = {
-  main: {
-    minHeight: "100vh",
-    background: "linear-gradient(180deg, #f5f5f7 0%, #eceef2 100%)",
-    padding: 12,
-    fontFamily: "Arial, sans-serif",
-    boxSizing: "border-box",
-  },
+  main: { minHeight: "100vh", background: "linear-gradient(180deg, #f5f5f7 0%, #eceef2 100%)", padding: 12, fontFamily: "Arial, sans-serif", boxSizing: "border-box" },
   shell: { maxWidth: 1320, margin: "0 auto" },
-  hero: (m) => ({
-    background: "linear-gradient(135deg, #111 0%, #1b2430 100%)",
-    color: "#fff",
-    borderRadius: m ? 20 : 24,
-    padding: m ? "18px 18px" : "22px 24px",
-    boxShadow: "0 8px 24px rgba(0,0,0,.12)",
-    marginBottom: 16,
-  }),
+  hero: (m) => ({ background: "linear-gradient(135deg, #111 0%, #1b2430 100%)", color: "#fff", borderRadius: m ? 20 : 24, padding: m ? "18px 18px" : "22px 24px", boxShadow: "0 8px 24px rgba(0,0,0,.12)", marginBottom: 16 }),
   heroBadge: { display: "inline-block", fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", opacity: .75 },
   heroTitle: (m) => ({ fontSize: m ? 32 : 44, lineHeight: 1.05, fontWeight: 800, marginTop: 10 }),
   heroSub: (m) => ({ marginTop: 10, opacity: .9, lineHeight: 1.35, maxWidth: m ? "100%" : 760, fontSize: m ? 18 : 24 }),
-  layout: (m) => ({
-    display: "grid",
-    gridTemplateColumns: m ? "1fr" : "minmax(0,1fr) minmax(320px,420px)",
-    gap: 16,
-    alignItems: "start",
-  }),
-  left: { minWidth: 0 },
-  right: { minWidth: 0 },
+  layout: (m) => ({ display: "grid", gridTemplateColumns: m ? "1fr" : "minmax(0,1fr) minmax(320px,420px)", gap: 16, alignItems: "start" }),
+  left: { minWidth: 0 }, right: { minWidth: 0 },
   card: { background: "#fff", borderRadius: 20, padding: 20, boxShadow: "0 8px 24px rgba(0,0,0,.08)" },
-  previewCard: (m) => ({
-    position: m ? "static" : "sticky",
-    top: 12,
-    background: "#fff",
-    borderRadius: 20,
-    padding: 18,
-    boxShadow: "0 8px 24px rgba(0,0,0,.08)",
-    marginBottom: m ? 16 : 0,
-  }),
-  header: (m) => ({
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: m ? "center" : "flex-start",
-    gap: 16,
-    flexDirection: m ? "column-reverse" : "row",
-  }),
+  previewCard: (m) => ({ position: m ? "static" : "sticky", top: 12, background: "#fff", borderRadius: 20, padding: 18, boxShadow: "0 8px 24px rgba(0,0,0,.08)", marginBottom: m ? 16 : 0 }),
+  header: (m) => ({ display: "flex", justifyContent: "space-between", alignItems: m ? "center" : "flex-start", gap: 16, flexDirection: m ? "column-reverse" : "row" }),
   h1: (m) => ({ fontSize: m ? 28 : 30, margin: 0 }),
   muted: { color: "#666", marginTop: 8, lineHeight: 1.35 },
   logo: (m) => ({ width: m ? 180 : 140, maxWidth: "70vw", height: "auto", objectFit: "contain", alignSelf: m ? "center" : "auto" }),
   block: { border: "1px solid #ececec", borderRadius: 16, padding: 16, marginTop: 16, background: "#fff" },
   blockTitle: { fontSize: 14, fontWeight: 700, color: "#444", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 14 },
-  formGrid: (m) => ({
-    display: "grid",
-    gridTemplateColumns: m ? "1fr" : "minmax(140px, 220px) 1fr",
-    gap: m ? 10 : 14,
-    alignItems: "center",
-  }),
-  paramGrid: (m) => ({
-    display: "grid",
-    gridTemplateColumns: m ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))",
-    gap: 14,
-    alignItems: "start",
-  }),
-  chipGrid: (m) => ({
-    display: "grid",
-    gridTemplateColumns: m ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))",
-    gap: 10,
-    marginTop: 14,
-  }),
-  radioRow: (m) => ({
-    display: "flex",
-    gap: 10,
-    flexWrap: "wrap",
-    flexDirection: m ? "row" : "row",
-  }),
-  templateRow: (m) => ({
-    display: "flex",
-    gap: 10,
-    flexWrap: "wrap",
-    flexDirection: m ? "column" : "row",
-  }),
-  buttonGroup: (m) => ({
-    display: "grid",
-    gridTemplateColumns: m ? "1fr" : "1fr 1fr",
-    gap: 12,
-    marginTop: 18,
-  }),
-  input: {
-    width: "100%",
-    padding: "14px 16px",
-    border: "1px solid #bbb",
-    borderRadius: 14,
-    fontSize: 18,
-    minHeight: 54,
-    boxSizing: "border-box",
-    background: "#fff",
-    appearance: "none",
-    WebkitAppearance: "none",
-  },
-  primaryBtn: (full) => ({
-    padding: "16px 20px",
-    border: "1px solid #111",
-    background: "#111",
-    color: "#fff",
-    borderRadius: 16,
-    cursor: "pointer",
-    width: full ? "100%" : "auto",
-    minHeight: 56,
-    fontSize: 18,
-    fontWeight: 600,
-  }),
-  secondaryBtn: (m) => ({
-    padding: "16px 20px",
-    border: "1px solid #bbb",
-    background: "#fff",
-    color: "#111",
-    borderRadius: 16,
-    cursor: "pointer",
-    width: "100%",
-    minHeight: 56,
-    fontSize: 18,
-  }),
-  chip: {
-    padding: "12px 18px",
-    borderRadius: 999,
-    border: "1px solid #cfcfcf",
-    background: "#fff",
-    cursor: "pointer",
-    minHeight: 48,
-    fontSize: 18,
-  },
-  choiceChip: {
-    padding: "14px 16px",
-    borderRadius: 16,
-    border: "1px solid #d8d8d8",
-    background: "#fff",
-    cursor: "pointer",
-    textAlign: "left",
-    minHeight: 54,
-    fontSize: 18,
-  },
+  formGrid: (m) => ({ display: "grid", gridTemplateColumns: m ? "1fr" : "minmax(140px,220px) 1fr", gap: m ? 10 : 14, alignItems: "center" }),
+  paramGrid: (m) => ({ display: "grid", gridTemplateColumns: m ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, alignItems: "start" }),
+  chipGrid: (m) => ({ display: "grid", gridTemplateColumns: m ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginTop: 14 }),
+  radioRow: (m) => ({ display: "flex", gap: 10, flexWrap: "wrap" }),
+  templateRow: (m) => ({ display: "flex", gap: 10, flexWrap: "wrap", flexDirection: m ? "column" : "row" }),
+  buttonGroup: (m) => ({ display: "grid", gridTemplateColumns: m ? "1fr" : "1fr 1fr", gap: 12, marginTop: 18 }),
+  input: { width: "100%", padding: "14px 16px", border: "1px solid #bbb", borderRadius: 14, fontSize: 18, minHeight: 54, boxSizing: "border-box", background: "#fff", appearance: "none", WebkitAppearance: "none" },
+  primaryBtn: (full) => ({ padding: "16px 20px", border: "1px solid #111", background: "#111", color: "#fff", borderRadius: 16, cursor: "pointer", width: full ? "100%" : "auto", minHeight: 56, fontSize: 18, fontWeight: 600 }),
+  secondaryBtn: (full) => ({ padding: "16px 20px", border: "1px solid #bbb", background: "#fff", color: "#111", borderRadius: 16, cursor: "pointer", width: full ? "100%" : "auto", minHeight: 56, fontSize: 18 }),
+  chip: { padding: "12px 18px", borderRadius: 999, border: "1px solid #cfcfcf", background: "#fff", cursor: "pointer", minHeight: 48, fontSize: 18 },
+  choiceChip: { padding: "14px 16px", borderRadius: 16, border: "1px solid #d8d8d8", background: "#fff", cursor: "pointer", textAlign: "left", minHeight: 54, fontSize: 18 },
   chipSelected: { border: "1px solid #111", background: "#111", color: "#fff" },
   previewHead: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 },
   cardLabel: { fontSize: 13, fontWeight: 700, color: "#666", textTransform: "uppercase", letterSpacing: ".05em" },
@@ -714,16 +636,7 @@ const styles = {
   rowsBox: { marginTop: 14, border: "1px solid #eee", borderRadius: 14, overflow: "hidden" },
   row: { display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 14px", borderBottom: "1px solid #eee" },
   overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,.32)", display: "flex", alignItems: "center", justifyContent: "center", padding: 8, boxSizing: "border-box", zIndex: 50 },
-  modal: (m) => ({
-    width: m ? "100vw" : "min(1320px, 98vw)",
-    height: m ? "100vh" : "min(920px, 96vh)",
-    background: "#fff",
-    borderRadius: m ? 0 : 20,
-    padding: 14,
-    boxShadow: m ? "none" : "0 20px 60px rgba(0,0,0,.18)",
-    display: "flex",
-    flexDirection: "column",
-  }),
+  modal: (m) => ({ width: m ? "100vw" : "min(1320px, 98vw)", height: m ? "100vh" : "min(920px, 96vh)", background: "#fff", borderRadius: m ? 0 : 20, padding: 14, boxShadow: m ? "none" : "0 20px 60px rgba(0,0,0,.18)", display: "flex", flexDirection: "column" }),
   modalHeader: (m) => ({ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12, flexWrap: "wrap", paddingTop: m ? 10 : 0 }),
   closeBtn: { width: 44, minWidth: 44, height: 44, borderRadius: 12, border: "1px solid #bbb", background: "#fff", fontSize: 24 },
   modalBody: { flex: 1, overflowY: "auto", paddingRight: 4 },

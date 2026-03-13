@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import JSZip from "jszip";
 import { getCurrentUser, requireRole } from "../../../lib/auth";
 import { buildQuoteData } from "../../../lib/rawBusiness";
 import { buildPdfBuffer } from "../../../lib/pdfLibBuilder";
+import { buildDocxBuffer } from "../../../lib/docxBuilder";
 import { appendTKPLog } from "../../../lib/rolesSheets";
 
 export const runtime = "nodejs";
@@ -37,13 +39,18 @@ async function getPayload(req) {
 export async function POST(req) {
   try {
     const user = await getCurrentUser();
-    requireRole(user, ["manager", "sales_director", "ceo"]);
+    requireRole(user, ["sales_director", "ceo"]);
 
     const body = await getPayload(req);
     const data = await buildQuoteData(body);
     const pdf = await buildPdfBuffer(data);
-    const asciiName = asciiFileName(`${data.tkpNumber || "TKP"} ${data.customer || ""} ${data.modelTitleTop || ""}`) + ".pdf";
-    const download = new URL(req.url).searchParams.get("download") === "1";
+    const docx = await buildDocxBuffer(data);
+
+    const baseName = asciiFileName(`${data.tkpNumber || "TKP"} ${data.customer || ""} ${data.modelTitleTop || ""}`);
+    const zip = new JSZip();
+    zip.file(`${baseName}.pdf`, pdf);
+    zip.file(`${baseName}.docx`, docx);
+    const zipBuffer = await zip.generateAsync({ type: "nodebuffer" });
 
     await appendTKPLog({
       created_at: new Date().toISOString(),
@@ -55,14 +62,14 @@ export async function POST(req) {
       model: data.modelTitleTop || "",
       source: data.model?.source || "",
       total: data.totals?.total || 0,
-      files: "PDF",
+      files: "PDF+DOCX",
       tkp_number: data.tkpNumber || "",
     });
 
-    return new NextResponse(pdf, {
+    return new NextResponse(zipBuffer, {
       headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${asciiName}"`,
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="${baseName}.zip"`,
         "Cache-Control": "no-store"
       }
     });
