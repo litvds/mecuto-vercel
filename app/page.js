@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 function parseFlexibleNumber(value) {
   return Number(String(value || "").replace(",", "."));
@@ -12,6 +13,15 @@ function detectDevice() {
   if (/iPhone|iPad|iPod/i.test(ua)) return "ios";
   if (/Android/i.test(ua)) return "android";
   return "desktop";
+}
+
+function fmt(v) {
+  return Number(v || 0).toLocaleString("ru-RU");
+}
+
+function getMachineImage(model) {
+  if (!model?.series) return "";
+  return `/images/machines/${model.series}.png`;
 }
 
 export default function Page() {
@@ -40,13 +50,100 @@ export default function Page() {
   const [hasS, setHasS] = useState(false);
 
   const [searchResult, setSearchResult] = useState(null);
+  const [previewSearchResult, setPreviewSearchResult] = useState(null);
   const [showOptions, setShowOptions] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState([]);
   const [totals, setTotals] = useState(null);
+  const [previewTotals, setPreviewTotals] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewMessage, setPreviewMessage] = useState("Введите параметры для автоматического подбора");
+  const searchSeq = useRef(0);
+
+  const filterPayload = useMemo(() => ({
+    source,
+    chuck_max_dia: parseFlexibleNumber(maxTurnDia || 0),
+    max_len: parseFlexibleNumber(maxTurnLen || 0),
+    bar_max_dia: parseFlexibleNumber(barDia || 0),
+    chuck_dia: chuckDia,
+    wantM: hasM,
+    wantY: hasY,
+    wantS: hasS
+  }), [source, maxTurnDia, maxTurnLen, barDia, chuckDia, hasM, hasY, hasS]);
 
   useEffect(() => { loadMeta(source); }, [source]);
-  useEffect(() => { if (searchResult?.model) calcTotalsNow(); }, [searchResult, selectedOptions, distanceKm, warrantyMonths]);
+
+  useEffect(() => {
+    const hasAnyFilter =
+      filterPayload.chuck_max_dia > 0 ||
+      filterPayload.max_len > 0 ||
+      filterPayload.bar_max_dia > 0 ||
+      !!filterPayload.chuck_dia ||
+      filterPayload.wantM ||
+      filterPayload.wantY ||
+      filterPayload.wantS;
+
+    if (!hasAnyFilter) {
+      setPreviewSearchResult(null);
+      setPreviewTotals(null);
+      setPreviewMessage("Введите параметры для автоматического подбора");
+      return;
+    }
+
+    const seq = ++searchSeq.current;
+    const t = setTimeout(async () => {
+      try {
+        setPreviewLoading(true);
+        setPreviewMessage("Подбираем модель...");
+        const res = await fetch("/api/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(filterPayload)
+        });
+        const data = await res.json();
+
+        if (seq !== searchSeq.current) return;
+
+        if (!data.ok) {
+          setPreviewSearchResult(null);
+          setPreviewTotals(null);
+          setPreviewMessage(data.message || data.error || "Подходящая модель не найдена");
+          setPreviewLoading(false);
+          return;
+        }
+
+        setPreviewSearchResult(data);
+        setPreviewMessage("Модель подобрана");
+
+        const quoteRes = await fetch("/api/quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: data.model,
+            selectedOptions: data.model.source === "stock" ? (data.options || []) : [],
+            distanceKm: parseFlexibleNumber(distanceKm || 0),
+            warrantyMonths: Number(warrantyMonths || 6)
+          })
+        });
+        const quoteData = await quoteRes.json();
+        if (seq !== searchSeq.current) return;
+        if (quoteData.ok) setPreviewTotals(quoteData);
+      } catch (e) {
+        if (seq !== searchSeq.current) return;
+        setPreviewSearchResult(null);
+        setPreviewTotals(null);
+        setPreviewMessage("Ошибка автоматического подбора");
+      } finally {
+        if (seq === searchSeq.current) setPreviewLoading(false);
+      }
+    }, 450);
+
+    return () => clearTimeout(t);
+  }, [filterPayload, distanceKm, warrantyMonths]);
+
+  useEffect(() => {
+    if (searchResult?.model) calcTotalsNow();
+  }, [searchResult, selectedOptions, distanceKm, warrantyMonths]);
 
   async function loadMeta(src) {
     const res = await fetch("/api/source-meta", {
@@ -59,6 +156,12 @@ export default function Page() {
       setChuckValues(data.chuckDiameters || []);
       setSourceLabel(data.sourceLabel || "");
       setChuckDia("");
+      setPreviewSearchResult(null);
+      setPreviewTotals(null);
+      setSearchResult(null);
+      setTotals(null);
+      setSelectedOptions([]);
+      setShowOptions(false);
     }
   }
 
@@ -67,16 +170,7 @@ export default function Page() {
     const res = await fetch("/api/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        source,
-        chuck_max_dia: parseFlexibleNumber(maxTurnDia || 0),
-        max_len: parseFlexibleNumber(maxTurnLen || 0),
-        bar_max_dia: parseFlexibleNumber(barDia || 0),
-        chuck_dia: chuckDia,
-        wantM: hasM,
-        wantY: hasY,
-        wantS: hasS
-      })
+      body: JSON.stringify(filterPayload)
     });
 
     const data = await res.json();
@@ -114,7 +208,11 @@ export default function Page() {
   function clearForm() {
     setCustomer(""); setInn(""); setContact(""); setPosition(""); setPhone(""); setEmail(""); setPreparedBy("");
     setMaxTurnDia(""); setMaxTurnLen(""); setBarDia(""); setChuckDia(""); setDistanceKm(""); setWarrantyMonths(6);
-    setHasM(false); setHasY(false); setHasS(false); setSearchResult(null); setSelectedOptions([]); setTotals(null); setShowOptions(false);
+    setHasM(false); setHasY(false); setHasS(false);
+    setSearchResult(null); setPreviewSearchResult(null);
+    setSelectedOptions([]); setTotals(null); setPreviewTotals(null);
+    setShowOptions(false);
+    setPreviewMessage("Введите параметры для автоматического подбора");
   }
 
   function toggleOption(opt) {
@@ -202,90 +300,137 @@ export default function Page() {
     return g;
   }, [searchResult]);
 
+  const modelForCard = searchResult?.model || previewSearchResult?.model;
+  const totalForCard = totals?.total || previewTotals?.total || 0;
+
   return (
     <main style={mainStyle}>
-      <div style={cardStyle}>
-        <div style={headerWrapStyle}>
-          <div>
-            <h1 style={{ fontSize: 28, margin: 0 }}>Форма для заполнения</h1>
-            <div style={{ color: "#666", marginTop: 8 }}>{sourceLabel}</div>
-          </div>
-          <img src="/images/logo.png" alt="Логотип" style={logoImageStyle} />
-        </div>
-
-        <div style={formGridStyle}>
-          <Label>Наименование заказчика</Label><Input value={customer} onChange={setCustomer} />
-          <Label>ИНН</Label><Input value={inn} onChange={setInn} />
-          <Label>Контактное лицо</Label><Input value={contact} onChange={setContact} />
-          <Label>Должность</Label><Input value={position} onChange={setPosition} />
-          <Label>Телефон</Label><Input value={phone} onChange={setPhone} />
-          <Label>E-mail</Label><Input value={email} onChange={setEmail} />
-          <Label>Кто подготовил</Label><Input value={preparedBy} onChange={setPreparedBy} />
-        </div>
-
-        <hr style={{ margin: "26px 0", border: 0, borderTop: "1px dashed #bbb" }} />
-
-        <div style={radioRowStyle}>
-          <ChipRadio checked={source === "stock"} onClick={() => setSource("stock")} label="Из наличия" />
-          <ChipRadio checked={source === "summury"} onClick={() => setSource("summury")} label="Под заказ" />
-        </div>
-
-        <div style={adaptiveGridStyle}>
-          <FieldBlock label="Максимальный диаметр точения"><Input value={maxTurnDia} onChange={setMaxTurnDia} inputMode="decimal" /></FieldBlock>
-          <FieldBlock label="Максимальная длина точения"><Input value={maxTurnLen} onChange={setMaxTurnLen} inputMode="decimal" /></FieldBlock>
-          <FieldBlock label="Диаметр прутка"><Input value={barDia} onChange={setBarDia} inputMode="decimal" /></FieldBlock>
-          <FieldBlock label="Диаметр патрона">
-            <select value={chuckDia} onChange={e => setChuckDia(e.target.value)} style={inputStyle}>
-              <option value="">—</option>
-              {chuckValues.map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
-          </FieldBlock>
-        </div>
-
-        <div style={checkboxWrapStyle}>
-          <ChoiceChip checked={hasM} onClick={() => setHasM(!hasM)} label="С приводным инструментом" />
-          <ChoiceChip checked={hasY} onClick={() => { const v = !hasY; setHasY(v); if (v) setHasM(true); }} label="С осью Y" />
-          <ChoiceChip checked={hasS} onClick={() => { const v = !hasS; setHasS(v); if (v) setHasM(true); }} label="С противошпинделем" />
-        </div>
-
-        <div style={adaptiveGridStyle}>
-          <FieldBlock label="Расстояние до места поставки"><Input value={distanceKm} onChange={setDistanceKm} inputMode="decimal" /></FieldBlock>
-          <FieldBlock label="Гарантия месяцев">
-            <div style={radioRowStyle}>
-              {[6, 12, 24].map(m => <ChipRadio key={m} checked={warrantyMonths === m} onClick={() => setWarrantyMonths(m)} label={String(m)} />)}
+      <div style={pageGridStyle}>
+        <div style={leftColStyle}>
+          <div style={cardStyle}>
+            <div style={headerWrapStyle}>
+              <div>
+                <h1 style={{ fontSize: 28, margin: 0 }}>Подбор ТКП</h1>
+                <div style={{ color: "#666", marginTop: 8 }}>{sourceLabel}</div>
+              </div>
+              <img src="/images/logo.png" alt="Логотип" style={logoImageStyle} />
             </div>
-          </FieldBlock>
-        </div>
 
-        <div style={adaptiveGridStyle}>
-          <FieldBlock label="Шаблон ТКП">
-            <div style={radioRowStyle}>
-              <ChipRadio checked={templateName === "style-size"} onClick={() => setTemplateName("style-size")} label="Стиль Размер" />
-              <ChipRadio checked={templateName === "alternative-style"} onClick={() => setTemplateName("alternative-style")} label="Альтернативный стиль" />
+            <div style={formGridStyle}>
+              <Label>Наименование заказчика</Label><Input value={customer} onChange={setCustomer} />
+              <Label>ИНН</Label><Input value={inn} onChange={setInn} />
+              <Label>Контактное лицо</Label><Input value={contact} onChange={setContact} />
+              <Label>Должность</Label><Input value={position} onChange={setPosition} />
+              <Label>Телефон</Label><Input value={phone} onChange={setPhone} />
+              <Label>E-mail</Label><Input value={email} onChange={setEmail} />
+              <Label>Кто подготовил</Label><Input value={preparedBy} onChange={setPreparedBy} />
             </div>
-          </FieldBlock>
-        </div>
 
-        <div style={buttonsWrapStyle}>
-          <button onClick={handleSearchAndOpenOptions} style={primaryBtn} disabled={loading}>
-            {loading ? "Подбираем..." : "Перейти к выбору опций"}
-          </button>
-          <button onClick={clearForm} style={secondaryBtn}>Очистить форму</button>
-        </div>
+            <hr style={{ margin: "26px 0", border: 0, borderTop: "1px dashed #bbb" }} />
 
-        {searchResult?.model && totals && (
-          <div style={summaryBoxStyle}>
-            <div><b>Подобранная модель:</b> {searchResult.model.model_name}</div>
-            <div style={{ marginTop: 6 }}>Предварительный итог: <b>{fmt(totals.total)}</b></div>
+            <SectionTitle>Источник</SectionTitle>
+            <div style={radioRowStyle}>
+              <ChipRadio checked={source === "stock"} onClick={() => setSource("stock")} label="Из наличия" />
+              <ChipRadio checked={source === "summury"} onClick={() => setSource("summury")} label="Под заказ" />
+            </div>
+
+            <SectionTitle>Параметры подбора</SectionTitle>
+            <div style={adaptiveGridStyle}>
+              <FieldBlock label="Максимальный диаметр точения"><Input value={maxTurnDia} onChange={setMaxTurnDia} inputMode="decimal" /></FieldBlock>
+              <FieldBlock label="Максимальная длина точения"><Input value={maxTurnLen} onChange={setMaxTurnLen} inputMode="decimal" /></FieldBlock>
+              <FieldBlock label="Диаметр прутка"><Input value={barDia} onChange={setBarDia} inputMode="decimal" /></FieldBlock>
+              <FieldBlock label="Диаметр патрона">
+                <select value={chuckDia} onChange={e => setChuckDia(e.target.value)} style={inputStyle}>
+                  <option value="">—</option>
+                  {chuckValues.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </FieldBlock>
+            </div>
+
+            <div style={checkboxWrapStyle}>
+              <ChoiceChip checked={hasM} onClick={() => setHasM(!hasM)} label="С приводным инструментом" />
+              <ChoiceChip checked={hasY} onClick={() => { const v = !hasY; setHasY(v); if (v) setHasM(true); }} label="С осью Y" />
+              <ChoiceChip checked={hasS} onClick={() => { const v = !hasS; setHasS(v); if (v) setHasM(true); }} label="С противошпинделем" />
+            </div>
+
+            <SectionTitle>Расчет</SectionTitle>
+            <div style={adaptiveGridStyle}>
+              <FieldBlock label="Расстояние до места поставки"><Input value={distanceKm} onChange={setDistanceKm} inputMode="decimal" /></FieldBlock>
+              <FieldBlock label="Гарантия месяцев">
+                <div style={radioRowStyle}>
+                  {[6, 12, 24].map(m => <ChipRadio key={m} checked={warrantyMonths === m} onClick={() => setWarrantyMonths(m)} label={String(m)} />)}
+                </div>
+              </FieldBlock>
+            </div>
+
+            <div style={adaptiveGridStyle}>
+              <FieldBlock label="Шаблон ТКП">
+                <div style={radioRowStyle}>
+                  <ChipRadio checked={templateName === "style-size"} onClick={() => setTemplateName("style-size")} label="Стиль Размер" />
+                  <ChipRadio checked={templateName === "alternative-style"} onClick={() => setTemplateName("alternative-style")} label="Альтернативный стиль" />
+                </div>
+              </FieldBlock>
+            </div>
+
+            <div style={buttonsWrapStyle}>
+              <button onClick={handleSearchAndOpenOptions} style={primaryBtn} disabled={loading}>
+                {loading ? "Подбираем..." : "Перейти к выбору опций"}
+              </button>
+              <button onClick={clearForm} style={secondaryBtn}>Очистить форму</button>
+            </div>
           </div>
-        )}
+        </div>
+
+        <div style={rightColStyle}>
+          <div style={stickyCardStyle}>
+            <div style={cardLabelStyle}>Живой подбор</div>
+            {previewLoading && <div style={hintStyle}>Подбираем...</div>}
+            {!previewLoading && !modelForCard && <div style={hintStyle}>{previewMessage}</div>}
+
+            {modelForCard && (
+              <>
+                <div style={modelTitleStyle}>{modelForCard.model_name}</div>
+                <div style={metaPillsStyle}>
+                  <span style={pillStyle}>{modelForCard.source === "stock" ? "Со склада" : "Под заказ"}</span>
+                  <span style={pillStyle}>Серия {modelForCard.series}</span>
+                  <span style={pillStyle}>Масса {fmt(modelForCard.mass_kg)} кг</span>
+                </div>
+
+                <div style={imageWrapStyle}>
+                  <img src={getMachineImage(modelForCard)} alt={modelForCard.model_name} style={machinePreviewStyle} />
+                </div>
+
+                <div style={priceBoxStyle}>
+                  <div style={priceCaptionStyle}>Предварительный итог</div>
+                  <div style={priceValueStyle}>{fmt(totalForCard)}</div>
+                </div>
+
+                <div style={miniTableStyle}>
+                  <Row label="Базовая цена" value={totals?.base || previewTotals?.base || 0} />
+                  <Row label="Опции" value={totals?.options || previewTotals?.options || 0} />
+                  <Row label="Доставка" value={totals?.delivery || previewTotals?.delivery || 0} />
+                  <Row label="Гарантия" value={totals?.warranty || previewTotals?.warranty || 0} />
+                </div>
+
+                {!searchResult?.model && (
+                  <button onClick={handleSearchAndOpenOptions} style={{ ...primaryBtn, width: "100%", marginTop: 14 }} disabled={loading || previewLoading}>
+                    Выбрать опции для этой модели
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {showOptions && searchResult?.model && (
         <div style={overlayStyle}>
           <div style={modalStyle}>
             <div style={modalHeaderStyle}>
-              <h2 style={{ margin: 0, fontSize: 22 }}>Выберите опции для станка {searchResult.model.model_name}</h2>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 22 }}>Выберите опции для станка {searchResult.model.model_name}</h2>
+                <div style={{ color: "#666", marginTop: 6 }}>Быстрый расчет обновляется автоматически</div>
+              </div>
               <button onClick={() => setShowOptions(false)} style={{ ...secondaryBtn, width: 44, minWidth: 44, padding: 8 }}>×</button>
             </div>
 
@@ -308,9 +453,12 @@ export default function Page() {
                             ...(disabled ? optionCardDisabledStyle : {})
                           }}
                         >
-                          <div style={{ fontWeight: 600, textAlign: "left" }}>{opt.option_name}</div>
-                          <div style={{ marginTop: 8, textAlign: "left", color: checked || disabled ? "#111" : "#555" }}>
+                          <div style={{ fontWeight: 700, textAlign: "left", minHeight: 42 }}>{opt.option_name}</div>
+                          <div style={{ marginTop: 10, textAlign: "left", color: checked || disabled ? "#111" : "#555", fontSize: 18 }}>
                             {disabled ? "включено" : fmt(opt.price)}
+                          </div>
+                          <div style={{ marginTop: 8, textAlign: "left", fontSize: 12, color: checked || disabled ? "#0b5" : "#777" }}>
+                            {disabled ? "Входит в комплектацию" : checked ? "Добавлено" : "Нажмите, чтобы добавить"}
                           </div>
                         </button>
                       );
@@ -321,7 +469,10 @@ export default function Page() {
             </div>
 
             <div style={mobileStickyFooterStyle}>
-              <div style={modalTotalStyle}>Предварительный итог: {totals ? fmt(totals.total) : "—"}</div>
+              <div style={modalTotalStyle}>
+                <div style={{ fontSize: 12, color: "#666" }}>Предварительный итог</div>
+                <div style={{ fontSize: 24, fontWeight: 800 }}>{fmt(totals?.total || 0)}</div>
+              </div>
               <button onClick={buildTKP} style={{ ...primaryBtn, minWidth: 220, width: "100%" }}>Сформировать PDF</button>
             </div>
           </div>
@@ -332,35 +483,58 @@ export default function Page() {
 }
 
 function Label({ children }) { return <div style={{ fontSize: 16 }}>{children}</div>; }
+function SectionTitle({ children }) { return <div style={{ marginTop: 18, marginBottom: 10, fontSize: 14, fontWeight: 700, color: "#444", textTransform: "uppercase", letterSpacing: ".04em" }}>{children}</div>; }
 function FieldBlock({ label, children }) { return <div><div style={{ fontSize: 16, marginBottom: 8 }}>{label}</div>{children}</div>; }
 function Input({ value, onChange, inputMode = "text" }) { return <input value={value} onChange={e => onChange(e.target.value)} inputMode={inputMode} style={inputStyle} />; }
 function ChipRadio({ checked, onClick, label }) { return <button type="button" onClick={onClick} style={{ ...chipStyle, ...(checked ? chipSelectedStyle : {}) }}>{label}</button>; }
 function ChoiceChip({ checked, onClick, label }) { return <button type="button" onClick={onClick} style={{ ...chipStyle, ...(checked ? chipSelectedStyle : {}) }}>{label}</button>; }
-function fmt(v) { return Number(v || 0).toLocaleString("ru-RU"); }
+function Row({ label, value }) {
+  return (
+    <div style={rowStyle}>
+      <div style={{ color: "#666" }}>{label}</div>
+      <div style={{ fontWeight: 700 }}>{fmt(value)}</div>
+    </div>
+  );
+}
 
 const mainStyle = { minHeight: "100vh", background: "#f5f5f7", padding: 12, fontFamily: "Arial, sans-serif", boxSizing: "border-box" };
-const cardStyle = { maxWidth: 980, margin: "0 auto", background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 8px 24px rgba(0,0,0,.08)" };
+const pageGridStyle = { maxWidth: 1320, margin: "0 auto", display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(320px,420px)", gap: 16, alignItems: "start" };
+const leftColStyle = { minWidth: 0 };
+const rightColStyle = { minWidth: 0 };
+const cardStyle = { background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 8px 24px rgba(0,0,0,.08)" };
+const stickyCardStyle = { position: "sticky", top: 12, background: "#fff", borderRadius: 16, padding: 18, boxShadow: "0 8px 24px rgba(0,0,0,.08)" };
 const headerWrapStyle = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" };
 const logoImageStyle = { width: 140, maxWidth: "40vw", height: "auto", objectFit: "contain" };
-const formGridStyle = { display: "grid", gridTemplateColumns: "minmax(140px, 200px) 1fr", gap: 14, marginTop: 24, alignItems: "center" };
-const adaptiveGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, alignItems: "start", marginTop: 18 };
-const checkboxWrapStyle = { display: "flex", gap: 12, marginTop: 18, flexWrap: "wrap" };
+const formGridStyle = { display: "grid", gridTemplateColumns: "minmax(140px, 220px) 1fr", gap: 14, marginTop: 24, alignItems: "center" };
+const adaptiveGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, alignItems: "start", marginTop: 8 };
+const checkboxWrapStyle = { display: "flex", gap: 12, marginTop: 14, flexWrap: "wrap" };
 const radioRowStyle = { display: "flex", gap: 10, flexWrap: "wrap" };
 const buttonsWrapStyle = { display: "flex", justifyContent: "space-between", gap: 12, marginTop: 28, flexWrap: "wrap" };
-const summaryBoxStyle = { marginTop: 20, padding: 14, borderRadius: 12, background: "#fafafa", border: "1px solid #eee" };
-const inputStyle = { width: "100%", padding: "12px 14px", border: "1px solid #bbb", borderRadius: 10, fontSize: 16, boxSizing: "border-box" };
+const inputStyle = { width: "100%", padding: "12px 14px", border: "1px solid #bbb", borderRadius: 10, fontSize: 16, boxSizing: "border-box", background: "#fff" };
 const primaryBtn = { padding: "14px 22px", border: "1px solid #111", background: "#111", color: "#fff", borderRadius: 12, cursor: "pointer", minWidth: 220 };
 const secondaryBtn = { padding: "14px 22px", border: "1px solid #999", background: "#fff", borderRadius: 12, cursor: "pointer", minWidth: 200 };
 const chipStyle = { padding: "10px 14px", borderRadius: 999, border: "1px solid #cfcfcf", background: "#fff", cursor: "pointer" };
 const chipSelectedStyle = { border: "1px solid #111", background: "#111", color: "#fff" };
-const overlayStyle = { position: "fixed", inset: 0, background: "rgba(0,0,0,.32)", display: "flex", alignItems: "center", justifyContent: "center", padding: 8, boxSizing: "border-box" };
-const modalStyle = { width: "min(1200px, 98vw)", height: "min(920px, 96vh)", background: "#fff", borderRadius: 20, padding: 14, boxShadow: "0 20px 60px rgba(0,0,0,.18)", display: "flex", flexDirection: "column" };
+const cardLabelStyle = { fontSize: 13, fontWeight: 700, color: "#666", textTransform: "uppercase", letterSpacing: ".05em" };
+const hintStyle = { marginTop: 14, color: "#666", lineHeight: 1.4 };
+const modelTitleStyle = { fontSize: 28, fontWeight: 800, marginTop: 10, lineHeight: 1.1 };
+const metaPillsStyle = { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 };
+const pillStyle = { padding: "6px 10px", borderRadius: 999, background: "#f2f2f2", fontSize: 12 };
+const imageWrapStyle = { marginTop: 14, borderRadius: 14, overflow: "hidden", background: "#fafafa", border: "1px solid #eee" };
+const machinePreviewStyle = { width: "100%", height: 240, objectFit: "contain", display: "block" };
+const priceBoxStyle = { marginTop: 14, padding: 16, borderRadius: 14, background: "#111", color: "#fff" };
+const priceCaptionStyle = { fontSize: 12, opacity: .8 };
+const priceValueStyle = { fontSize: 32, fontWeight: 800, marginTop: 4 };
+const miniTableStyle = { marginTop: 14, border: "1px solid #eee", borderRadius: 12, overflow: "hidden" };
+const rowStyle = { display: "flex", justifyContent: "space-between", gap: 12, padding: "12px 14px", borderBottom: "1px solid #eee" };
+const overlayStyle = { position: "fixed", inset: 0, background: "rgba(0,0,0,.32)", display: "flex", alignItems: "center", justifyContent: "center", padding: 8, boxSizing: "border-box", zIndex: 50 };
+const modalStyle = { width: "min(1320px, 98vw)", height: "min(920px, 96vh)", background: "#fff", borderRadius: 20, padding: 14, boxShadow: "0 20px 60px rgba(0,0,0,.18)", display: "flex", flexDirection: "column" };
 const modalHeaderStyle = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12, flexWrap: "wrap" };
 const modalBodyStyle = { flex: 1, overflowY: "auto", paddingRight: 4 };
-const mobileStickyFooterStyle = { marginTop: 12, display: "grid", gridTemplateColumns: "1fr", gap: 10, borderTop: "1px solid #eee", paddingTop: 12 };
+const mobileStickyFooterStyle = { marginTop: 12, display: "grid", gridTemplateColumns: "1fr minmax(220px,340px)", gap: 10, borderTop: "1px solid #eee", paddingTop: 12 };
 const modalTotalStyle = { padding: 12, background: "#f8f8f8", borderRadius: 10, fontWeight: "bold" };
 const optionGroupStyle = { border: "1px solid #ddd", borderRadius: 16, padding: 12, marginBottom: 12 };
-const optionsGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 };
-const optionCardStyle = { border: "1px solid #ddd", borderRadius: 14, padding: 14, background: "#fff", cursor: "pointer", textAlign: "left", transition: "all .2s ease" };
+const optionsGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 };
+const optionCardStyle = { border: "1px solid #ddd", borderRadius: 16, padding: 16, background: "#fff", cursor: "pointer", textAlign: "left", transition: "all .2s ease" };
 const optionCardSelectedStyle = { border: "1px solid #111", background: "#f4f7fb", boxShadow: "inset 0 0 0 1px #111" };
 const optionCardDisabledStyle = { opacity: 1, cursor: "default", background: "#f8f8f8" };

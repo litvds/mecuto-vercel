@@ -1,18 +1,11 @@
-СТАБИЛЬНЫЙ PDF ПАТЧ БЕЗ CHROMIUM
+V4 SAFE PATCH
 
-Что заменить:
-- package.json
-- app/page.js
-- app/api/build-tkp-pdf/route.js
-- добавить lib/pdfLibBuilder.js
+Замените файл:
+app/page.js
 
-Что меняется:
-- PDF теперь собирается через pdf-lib, без Puppeteer/Chromium
-- исчезает ошибка с @sparticuz/chromium на Vercel
-- iPhone/iPad открывает PDF в этой же вкладке
-- Android открывает PDF в новой вкладке
-- компьютер скачивает PDF
-
-После замены:
-npm install
-npm run dev
+Что добавлено:
+- живой подбор модели
+- карточка модели с картинкой
+- живой предварительный расчет
+- более удобный интерфейс для клиентов и менеджеров
+- PDF и backend не ломаются
