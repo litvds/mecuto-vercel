@@ -5,11 +5,15 @@ import { buildPdfBuffer } from "../../../lib/pdfLibBuilder";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-function safeFileName(s) {
-  return String(s || "")
+function asciiFileName(s) {
+  return String(s || "TKP")
+    .normalize("NFKD")
+    .replace(/[^\x00-\x7F]+/g, "_")
     .replace(/[\\/:*?"<>|]+/g, " ")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    .replace(/_+/g, "_")
+    .slice(0, 120) || "TKP";
 }
 
 async function getPayload(req) {
@@ -43,13 +47,14 @@ export async function POST(req) {
     const data = await buildQuoteData(body);
     const pdf = await buildPdfBuffer(data);
 
-    const filename =
-      safeFileName(`${data.tkpNumber} ${data.customer} ${data.modelTitleTop}`) + ".pdf";
+    const asciiName = asciiFileName(
+      `${data.tkpNumber || "TKP"} ${data.customer || ""} ${data.modelTitleTop || ""}`
+    ) + ".pdf";
 
     return new NextResponse(pdf, {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="${filename}"`,
+        "Content-Disposition": `inline; filename="${asciiName}"`,
         "Cache-Control": "no-store"
       }
     });
